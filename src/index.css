@@ -1,0 +1,63 @@
+@import "tailwindcss";
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary-50: oklch(0.97 0.01 291.07);
+  --color-primary-100: oklch(0.94 0.03 291.07);
+  --color-primary-200: oklch(0.88 0.06 291.07);
+  --color-primary-300: oklch(0.80 0.12 291.07);
+  --color-primary-400: oklch(0.70 0.19 291.07);
+  --color-primary-500: oklch(0.60 0.23 291.07);
+  --color-primary-600: oklch(0.50 0.24 291.07);
+  --color-primary-700: oklch(0.42 0.20 291.07);
+  --color-primary-800: oklch(0.35 0.15 291.07);
+  --color-primary-900: oklch(0.29 0.10 291.07);
+  --color-primary-950: oklch(0.18 0.06 291.07);
+
+  --font-display: "Outfit", "Inter", sans-serif;
+  --font-body: "Inter", sans-serif;
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-white/75 dark:bg-gray-900/60 backdrop-blur-2xl backdrop-saturate-150 border border-white/40 dark:border-white/10 shadow-2xl shadow-indigo-500/10 dark:shadow-black/50 ring-1 ring-white/50 dark:ring-white/5;
+  }
+
+  .glass-card {
+    @apply bg-white/60 dark:bg-gray-800/40 backdrop-blur-xl backdrop-saturate-150 border border-white/50 dark:border-white/10 shadow-xl shadow-indigo-500/5 dark:shadow-black/30 ring-1 ring-white/40 dark:ring-white/5;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-600 to-indigo-600 dark:from-primary-400 dark:to-indigo-400 bg-clip-text text-transparent;
+  }
+
+  .input-modern {
+    @apply w-full px-4 py-3 bg-white/50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl outline-none transition-all duration-200 focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 focus:bg-white dark:focus:bg-gray-900;
+  }
+
+  .btn-primary {
+    @apply w-full py-3 bg-gradient-to-r from-primary-600 to-indigo-600 hover:from-primary-700 hover:to-indigo-700 text-white font-semibold rounded-xl shadow-lg shadow-primary-500/20 transition-all duration-200 transform active:scale-[0.98];
+  }
+}
+
+body {
+  @apply bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-body antialiased selection:bg-primary-500/30;
+  background-image:
+    radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+}
+
+.dark body {
+  background-image:
+    radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+}
+
+.light body {
+  background-image:
+    radial-gradient(at 0% 0%, hsla(255, 85%, 96%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(220, 90%, 97%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(330, 80%, 96%, 1) 0, transparent 50%);
+}

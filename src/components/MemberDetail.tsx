@@ -4,6 +4,12 @@ import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from '
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { parseFirestoreDate } from '@/utils/date';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/components/ui/utils";
 
 interface MemberDetailProps {
   memberId: string;
@@ -201,8 +207,18 @@ export function MemberDetail({ memberId, onBack }: MemberDetailProps) {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-10 rounded-lg" />
+          <div className="space-y-2">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Skeleton className="h-[300px] rounded-xl" />
+          <Skeleton className="h-[300px] rounded-xl" />
+        </div>
       </div>
     );
   }
@@ -210,176 +226,206 @@ export function MemberDetail({ memberId, onBack }: MemberDetailProps) {
   if (!member) {
     return (
       <div className="space-y-6">
-        <button onClick={onBack} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+        <Button variant="ghost" size="icon" onClick={onBack}>
           <ArrowLeft className="w-5 h-5" />
-        </button>
-        <p className="text-gray-500 text-center">Member not found</p>
+        </Button>
+        <div className="flex flex-col items-center justify-center p-12 text-center">
+          <p className="text-muted-foreground">Member not found</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+        <Button variant="outline" size="icon" onClick={onBack} className="h-9 w-9">
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
         <div className="flex-1">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{member.displayName || 'N/A'}</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
+          <h2 className="text-2xl font-bold tracking-tight">{member.displayName || 'N/A'}</h2>
+          <p className="text-sm text-muted-foreground">
             Member since {member.createdAt?.toLocaleDateString() || 'N/A'}
           </p>
         </div>
+        <Badge variant={
+          member.enrollmentStatus === 'approved' ? 'default' :
+            member.enrollmentStatus === 'pending' ? 'secondary' :
+              'destructive'
+        } className="px-3 py-1 text-sm capitalize">
+          {member.enrollmentStatus}
+        </Badge>
       </div>
 
-      {/* Profile Card */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Profile Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-              <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Email</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{member.email || 'N/A'}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-              <Phone className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Phone</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{member.phoneNumber || 'N/A'}</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
-              <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Time Slot</p>
-              <div className="flex items-center gap-1.5">
-                {getTimeSlotIcon(member.timeSlot)}
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{member.timeSlot || 'Not assigned'}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Profile Card */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-lg">Profile Information</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card/50">
+              <div className="p-2 bg-muted rounded-full text-muted-foreground">
+                <Mail className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Email</p>
+                <p className="text-sm font-medium mt-1">{member.email || 'N/A'}</p>
               </div>
             </div>
-          </div>
-          <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-              <CreditCard className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card/50">
+              <div className="p-2 bg-muted rounded-full text-muted-foreground">
+                <Phone className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Phone</p>
+                <p className="text-sm font-medium mt-1">{member.phoneNumber || 'N/A'}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Plan</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{getPlanLabel(member.planDuration)}</p>
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card/50">
+              <div className="p-2 bg-muted rounded-full text-muted-foreground">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Time Slot</p>
+                <div className="flex items-center gap-2 mt-1">
+                  {getTimeSlotIcon(member.timeSlot)}
+                  <p className="text-sm font-medium">{member.timeSlot || 'Not assigned'}</p>
+                </div>
+              </div>
             </div>
-          </div>
-          <div className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
-              <Calendar className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+            <div className="flex items-start gap-4 p-4 rounded-lg border bg-card/50">
+              <div className="p-2 bg-muted rounded-full text-muted-foreground">
+                <CreditCard className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Plan</p>
+                <p className="text-sm font-medium mt-1">{getPlanLabel(member.planDuration)}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-gray-600 dark:text-gray-400">Join Date</p>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{member.createdAt?.toLocaleDateString() || 'N/A'}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+          </CardContent>
+        </Card>
 
-      {/* Membership Status */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Membership Status</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Status</p>
-            <span className={`inline-block px-2 py-1 rounded text-xs font-medium capitalize ${isExpired ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-              : member.enrollmentStatus === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                : member.enrollmentStatus === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                  : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
-              }`}>
-              {isExpired ? 'Expired' : member.enrollmentStatus}
-            </span>
-          </div>
-          <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Enrolled At</p>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">{member.enrolledAt?.toLocaleDateString() || '--'}</p>
-          </div>
-          <div className="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Expiry Date</p>
-            <p className={`text-sm font-medium ${isExpired ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'}`}>
-              {expiryDate ? expiryDate.toLocaleDateString() : '--'}
-              {isExpired && <span className="text-xs ml-1">(Expired)</span>}
-            </p>
-          </div>
-        </div>
+        {/* Membership Status */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Membership Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Status</span>
+              <Badge variant={isExpired ? 'destructive' : 'outline'} className={cn("capitalize", isExpired && "bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20")}>
+                {isExpired ? 'Expired' : 'Active'}
+              </Badge>
+            </div>
+            <Separator />
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase">Enrolled At</p>
+              <p className="text-sm font-medium">{member.enrolledAt?.toLocaleDateString() || '--'}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-muted-foreground uppercase">Expiry Date</p>
+              <p className={`text-sm font-medium ${isExpired ? 'text-destructive' : ''}`}>
+                {expiryDate ? expiryDate.toLocaleDateString() : '--'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Real Attendance History */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Recent Attendance ({attendance.length})</h3>
-          {attendance.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">No attendance records</p>
-          ) : (
-            <div className="space-y-3">
-              {attendance.map(record => (
-                <div key={record.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">{record.date}</p>
-                    <p className="text-xs text-gray-600 dark:text-gray-400">
-                      {formatTime(record.checkInTime)} - {formatTime(record.checkOutTime)}
-                    </p>
-                    {record.timeSlot && (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {getTimeSlotIcon(record.timeSlot)}
-                        <span className="text-xs text-gray-500">{record.timeSlot}</span>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              Recent Attendance
+              <Badge variant="secondary" className="rounded-full px-2.5">{attendance.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {attendance.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                <Calendar className="w-8 h-8 opacity-20 mb-2" />
+                <p className="text-sm">No attendance records found</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {attendance.map((record) => (
+                  <div key={record.id} className="group flex items-center justify-between p-3 hover:bg-muted/50 rounded-lg transition-colors border-b last:border-0 border-border/50">
+                    <div>
+                      <p className="text-sm font-medium">{record.date}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span>{formatTime(record.checkInTime)} - {formatTime(record.checkOutTime)}</span>
+                        {record.timeSlot && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              {getTimeSlotIcon(record.timeSlot)}
+                              {record.timeSlot}
+                            </span>
+                          </>
+                        )}
                       </div>
-                    )}
+                    </div>
+                    <Badge variant="outline" className="font-normal font-mono text-xs">
+                      {formatDuration(record.duration)}
+                    </Badge>
                   </div>
-                  <span className="text-sm font-medium text-gray-900 dark:text-white">{formatDuration(record.duration)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Real Payment History */}
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Payment History ({payments.length})</h3>
-          {payments.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-4">No payment records</p>
-          ) : (
-            <div className="space-y-3">
-              {payments.map(payment => (
-                <div key={payment.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-100 dark:border-gray-800">
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg">
-                      <CreditCard className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center justify-between">
+              Payment History
+              <Badge variant="secondary" className="rounded-full px-2.5">{payments.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {payments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                <CreditCard className="w-8 h-8 opacity-20 mb-2" />
+                <p className="text-sm">No payment records found</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {payments.map(payment => (
+                  <div key={payment.id} className="flex items-center justify-between p-3 hover:bg-muted/50 rounded-lg transition-colors border-b last:border-0 border-border/50">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-muted rounded-lg text-muted-foreground mt-1">
+                        <CreditCard className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold">₹{payment.amount}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{payment.paymentMethod}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{payment.createdAt.toLocaleDateString()}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">₹{payment.amount}</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">{payment.paymentMethod}</p>
-                      <p className="text-xs text-gray-500">{payment.createdAt.toLocaleDateString()}</p>
+                    <div className="text-right">
+                      <Badge variant={
+                        payment.status === 'approved' ? 'default' :
+                          payment.status === 'pending' ? 'secondary' :
+                            'destructive'
+                      } className="capitalize mb-1">
+                        {payment.status}
+                      </Badge>
+                      {payment.transactionId && (
+                        <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">
+                          #{payment.transactionId.slice(0, 8)}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className={`inline-block px-2 py-1 rounded text-xs font-medium capitalize mb-1 ${payment.status === 'approved' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                      : payment.status === 'pending' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                      }`}>
-                      {payment.status}
-                    </span>
-                    {payment.transactionId && (
-                      <p className="text-xs text-gray-500 font-mono">{payment.transactionId.slice(0, 12)}...</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

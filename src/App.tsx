@@ -68,7 +68,7 @@ function AuthenticatedLayout({ children, darkMode, setDarkMode }: { children: Re
 
   return (
     <div className="min-h-screen transition-colors font-body">
-      {/* Background Decoration */}
+      {/* Background Decoration - Dark Mode Only */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10 hidden dark:block">
         <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-500/10 rounded-full blur-[100px] opacity-50 mix-blend-multiply"></div>
         <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-blue-500/10 rounded-full blur-[100px] opacity-50 mix-blend-multiply"></div>

@@ -138,12 +138,17 @@ export default function CreateGymForm({ onSuccess }: CreateGymFormProps) {
                     Phone *
                   </label>
                   <input
-                    type="tel"
+                    type="text"
                     name="phone"
                     value={form.phone}
-                    onChange={handleChange}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setForm({ ...form, phone: val });
+                    }}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                     required
+                    maxLength={10}
+                    placeholder="10 digit mobile number"
                   />
                 </div>
                 <div>
@@ -180,10 +185,13 @@ export default function CreateGymForm({ onSuccess }: CreateGymFormProps) {
                     Monthly Fee (₹) *
                   </label>
                   <input
-                    type="number"
+                    type="text"
                     name="monthlyFee"
                     value={form.monthlyFee}
-                    onChange={handleChange}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setForm({ ...form, monthlyFee: val });
+                    }}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                     required
                   />

@@ -3,6 +3,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { createContext, useContext, useEffect, useState } from 'react';
 import { auth, db } from '../lib/firebase';
 import { UserData, Gym } from '../types';
+import { parseFirestoreDate } from '../utils/date';
 
 interface AuthContextType {
     user: User | null;
@@ -15,6 +16,53 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function parseUserData(uid: string, data: Record<string, unknown>): UserData {
+    let planDuration = (data.planDuration as number) ?? 1;
+    if (!data.planDuration) {
+        if (data.paymentMethod === 'Quarterly') planDuration = 3;
+        else if (data.paymentMethod === '6-Month') planDuration = 6;
+    }
+    return {
+        uid,
+        email: (data.email as string) || null,
+        displayName: (data.displayName as string) || null,
+        role: (data.role as UserData['role']) || 'member',
+        gymId: (data.gymId as string) || null,
+        enrollmentStatus: (data.enrollmentStatus as UserData['enrollmentStatus']) || 'none',
+        paymentMethod: (data.paymentMethod as UserData['paymentMethod']) || null,
+        transactionId: (data.transactionId as string) || null,
+        enrolledAt: parseFirestoreDate(data.enrolledAt),
+        createdAt: parseFirestoreDate(data.createdAt) || new Date(),
+        planDuration,
+        timeSlot: (data.timeSlot as UserData['timeSlot']) || null,
+    };
+}
+
+function parseGymData(id: string, data: Record<string, unknown>): Gym {
+    return {
+        id,
+        name: (data.name as string) || '',
+        address: (data.address as string) || '',
+        phone: (data.phone as string) || '',
+        email: (data.email as string) || '',
+        upiId: (data.upiId as string) || '',
+        monthlyFee: (data.monthlyFee as number) || 0,
+        createdAt: parseFirestoreDate(data.createdAt) || new Date(),
+        adminId: (data.adminId as string) || '',
+        isActive: (data.isActive as boolean) ?? true,
+        description: (data.description as string) || '',
+        quarterlyFee: (data.quarterlyFee as number) || 0,
+        annualFee: (data.annualFee as number) || 0,
+        amenities: (data.amenities as string[]) || [],
+        images: (data.images as string[]) || [],
+        rating: (data.rating as number) || 0,
+        reviews: (data.reviews as number) || 0,
+        openingHours: (data.openingHours as string) || '',
+        capacity: (data.capacity as number) || 0,
+        coordinates: (data.coordinates as Gym['coordinates']) || undefined,
+    };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [userData, setUserData] = useState<UserData | null>(null);
@@ -25,13 +73,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
             const userDoc = await getDoc(doc(db, 'users', uid));
             if (userDoc.exists()) {
-                const data = userDoc.data() as UserData;
+                const data = parseUserData(uid, userDoc.data() as Record<string, unknown>);
                 setUserData(data);
 
                 if (data.role === 'gymAdmin' && data.gymId) {
                     const gymDoc = await getDoc(doc(db, 'gyms', data.gymId));
                     if (gymDoc.exists()) {
-                        setUserGym({ ...gymDoc.data(), id: gymDoc.id } as Gym);
+                        setUserGym(parseGymData(gymDoc.id, gymDoc.data() as Record<string, unknown>));
                     }
                 }
             }

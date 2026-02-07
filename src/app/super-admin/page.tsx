@@ -1,14 +1,51 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, getDocs, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, doc, updateDoc, query, orderBy, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Gym } from '@/types';
-import { Building2, Users, DollarSign, LogOut, Key, Ban, CheckCircle, Trash2, Plus } from 'lucide-react';
+import { Building2, Users, DollarSign, LogOut, Key, Ban, CheckCircle, Trash2, Plus, AlertTriangle, Flag, ChevronDown, ChevronUp } from 'lucide-react';
 import { getAuth, sendPasswordResetEmail } from 'firebase/auth';
-import CreateGymForm from '@/components/CreateGymForm';
+
+interface GymReport {
+  id: string;
+  gymId: string;
+  gymName: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  issueTypes: string[];
+  description: string;
+  status: string;
+  createdAt: Date;
+  reviewedAt: Date | null;
+  reviewedBy: string | null;
+  adminNotes?: string;
+}
+
+interface FlaggedGym {
+  gymId: string;
+  gymName: string;
+  totalReports: number;
+  pendingReports: number;
+  issueBreakdown: Record<string, number>;
+  reports: GymReport[];
+  gym?: Gym;
+}
+
+const parseDate = (val: unknown): Date => {
+  if (!val) return new Date();
+  if (val instanceof Date) return val;
+  if (typeof val === 'object' && val !== null && 'toDate' in val) {
+    return (val as { toDate: () => Date }).toDate();
+  }
+  if (typeof val === 'object' && val !== null && 'seconds' in val) {
+    return new Date((val as { seconds: number }).seconds * 1000);
+  }
+  return new Date(val as string);
+};
 
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
@@ -16,8 +53,13 @@ export default function SuperAdminDashboard() {
   const [gyms, setGyms] = useState<Gym[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [showCreateGym, setShowCreateGym] = useState(false);
   const auth = getAuth();
+
+  // Flagged gyms state
+  const [flaggedGyms, setFlaggedGyms] = useState<FlaggedGym[]>([]);
+  const [flaggedLoading, setFlaggedLoading] = useState(true);
+  const [expandedGym, setExpandedGym] = useState<string | null>(null);
+  const REPORT_THRESHOLD = 3; // Show gym if reports >= this number
 
   useEffect(() => {
     if (!authLoading) {
@@ -27,6 +69,7 @@ export default function SuperAdminDashboard() {
         navigate('/');
       } else {
         fetchGyms();
+        fetchFlaggedGyms();
       }
     }
   }, [user, userData, authLoading, navigate]);
@@ -52,6 +95,76 @@ export default function SuperAdminDashboard() {
       console.error('Error fetching gyms:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchFlaggedGyms = async () => {
+    try {
+      setFlaggedLoading(true);
+      // Fetch ALL gym reports
+      const reportsSnap = await getDocs(collection(db, 'gymReports'));
+      const allReports: GymReport[] = reportsSnap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          gymId: data.gymId || '',
+          gymName: data.gymName || '',
+          userId: data.userId || '',
+          userName: data.userName || '',
+          userEmail: data.userEmail || '',
+          issueTypes: data.issueTypes || [],
+          description: data.description || '',
+          status: data.status || 'pending',
+          createdAt: parseDate(data.createdAt),
+          reviewedAt: data.reviewedAt ? parseDate(data.reviewedAt) : null,
+          reviewedBy: data.reviewedBy || null,
+          adminNotes: data.adminNotes || undefined,
+        };
+      });
+
+      // Group by gymId - Filter out resolved/rejected reports from flagging count
+      const gymMap = new Map<string, GymReport[]>();
+      allReports.forEach(r => {
+        // Exclude resolved and rejected reports from the count
+        if (r.status === 'resolved' || r.status === 'rejected') return;
+
+        if (!gymMap.has(r.gymId)) gymMap.set(r.gymId, []);
+        gymMap.get(r.gymId)!.push(r);
+      });
+
+      // Filter: only gyms with >= REPORT_THRESHOLD reports
+      const flagged: FlaggedGym[] = [];
+      gymMap.forEach((reports, gymId) => {
+        if (reports.length >= REPORT_THRESHOLD) {
+          // Build issue breakdown
+          const issueBreakdown: Record<string, number> = {};
+          reports.forEach(r => {
+            r.issueTypes.forEach(issue => {
+              issueBreakdown[issue] = (issueBreakdown[issue] || 0) + 1;
+            });
+          });
+
+          // Sort reports by date desc
+          reports.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+          flagged.push({
+            gymId,
+            gymName: reports[0].gymName || 'Unknown Gym',
+            totalReports: reports.length,
+            pendingReports: reports.filter(r => r.status === 'pending').length,
+            issueBreakdown,
+            reports,
+          });
+        }
+      });
+
+      // Sort by total reports desc
+      flagged.sort((a, b) => b.totalReports - a.totalReports);
+      setFlaggedGyms(flagged);
+    } catch (error) {
+      console.error('Error fetching flagged gyms:', error);
+    } finally {
+      setFlaggedLoading(false);
     }
   };
 
@@ -100,11 +213,6 @@ export default function SuperAdminDashboard() {
 
     setActionLoading(gym.id);
     try {
-      // In a real app, you'd want to:
-      // 1. Delete all associated users
-      // 2. Delete all enrollments
-      // 3. Then delete the gym
-      // For now, just mark as inactive
       await updateDoc(doc(db, 'gyms', gym.id), {
         isActive: false,
       });
@@ -128,6 +236,14 @@ export default function SuperAdminDashboard() {
     activeGyms: gyms.filter((g) => g.isActive).length,
     inactiveGyms: gyms.filter((g) => !g.isActive).length,
     totalRevenue: gyms.reduce((sum, g) => sum + g.monthlyFee, 0),
+  };
+
+  const issueColors: Record<string, string> = {
+    Equipment: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    Cleanliness: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    Staff: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    Safety: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    Other: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400',
   };
 
   if (authLoading || loading) {
@@ -178,22 +294,15 @@ export default function SuperAdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
-        {/* Stats Cards */}
-        {/* CREATE GYM BUTTON - PROMINENT */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-purple-50 dark:bg-purple-900/10 border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4 gap-4">
+        {/* Banner - PROMINENT */}
+        <div className="flex flex-col sm:flex-row items-center justify-between bg-purple-50 dark:bg-purple-900/10 border-2 border-purple-200 dark:border-purple-800 rounded-lg p-4 gap-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">Gym Management</h2>
             <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Create and manage all gyms in the system</p>
           </div>
-          <button
-            onClick={() => navigate('/super-admin/create-gym')}
-            className="inline-flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold text-base shadow-lg hover:shadow-xl transition-all w-full sm:w-auto justify-center"
-          >
-            <Plus className="w-5 h-5" />
-            Create New Gym
-          </button>
         </div>
 
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-5">
             <div className="flex items-start justify-between mb-3">
@@ -236,6 +345,158 @@ export default function SuperAdminDashboard() {
           </div>
         </div>
 
+        {/* ⚠️ FLAGGED GYMS — Repeated Reports Section */}
+        <div className="bg-white dark:bg-gray-900 border-2 border-red-200 dark:border-red-900/50 rounded-lg overflow-hidden">
+          <div className="p-5 border-b border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  Flagged Gyms — Repeated Reports ({REPORT_THRESHOLD}+ reports)
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Gyms with {REPORT_THRESHOLD} or more member reports that need your attention
+                </p>
+              </div>
+            </div>
+            {flaggedGyms.length > 0 && (
+              <span className="px-3 py-1 bg-red-600 text-white rounded-full text-xs font-bold">
+                {flaggedGyms.length} flagged
+              </span>
+            )}
+          </div>
+
+          {flaggedLoading ? (
+            <div className="p-8 flex justify-center">
+              <div className="w-6 h-6 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : flaggedGyms.length === 0 ? (
+            <div className="p-8 text-center">
+              <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto mb-2" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">All clear! No gyms have {REPORT_THRESHOLD}+ reports.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200 dark:divide-gray-800">
+              {flaggedGyms.map(fg => (
+                <div key={fg.gymId} className="transition-colors">
+                  {/* Flagged Gym Summary Row */}
+                  <button
+                    onClick={() => setExpandedGym(expandedGym === fg.gymId ? null : fg.gymId)}
+                    className="w-full flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-gray-800/30 text-left"
+                  >
+                    <div className="flex items-center gap-4 flex-1 min-w-0">
+                      <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg shrink-0">
+                        <Flag className="w-4 h-4 text-red-600 dark:text-red-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{fg.gymName}</p>
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <span className="px-2 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded text-xs font-bold">
+                            {fg.totalReports} reports
+                          </span>
+                          {fg.pendingReports > 0 && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded text-xs font-medium">
+                              {fg.pendingReports} pending
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Issue Breakdown Chips */}
+                    <div className="hidden md:flex items-center gap-1.5 mx-4 shrink-0">
+                      {Object.entries(fg.issueBreakdown)
+                        .sort((a, b) => b[1] - a[1])
+                        .slice(0, 4)
+                        .map(([issue, count]) => (
+                          <span key={issue} className={`px-2 py-0.5 rounded text-xs font-medium ${issueColors[issue] || issueColors.Other}`}>
+                            {issue}: {count}
+                          </span>
+                        ))}
+                    </div>
+
+                    {expandedGym === fg.gymId
+                      ? <ChevronUp className="w-4 h-4 text-gray-400 shrink-0" />
+                      : <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
+                    }
+                  </button>
+
+                  {/* Expanded Detail — Individual Reports */}
+                  {expandedGym === fg.gymId && (
+                    <div className="bg-gray-50 dark:bg-gray-800/20 border-t border-gray-200 dark:border-gray-800">
+                      {/* Issue breakdown summary */}
+                      <div className="px-5 pt-4 pb-2 flex flex-wrap gap-2">
+                        {Object.entries(fg.issueBreakdown)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([issue, count]) => (
+                            <div key={issue} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${issueColors[issue] || issueColors.Other}`}>
+                              <span>{issue}</span>
+                              <span className="opacity-70">×{count}</span>
+                            </div>
+                          ))}
+                      </div>
+
+                      {/* Individual reports table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-100 dark:bg-gray-800/50">
+                            <tr>
+                              <th className="text-left py-2 px-5 text-xs font-medium text-gray-600 dark:text-gray-400">Date</th>
+                              <th className="text-left py-2 px-5 text-xs font-medium text-gray-600 dark:text-gray-400">Member</th>
+                              <th className="text-left py-2 px-5 text-xs font-medium text-gray-600 dark:text-gray-400">Issues</th>
+                              <th className="text-left py-2 px-5 text-xs font-medium text-gray-600 dark:text-gray-400">Description</th>
+                              <th className="text-left py-2 px-5 text-xs font-medium text-gray-600 dark:text-gray-400">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                            {fg.reports.map(report => (
+                              <tr key={report.id} className="hover:bg-white dark:hover:bg-gray-800/40">
+                                <td className="py-2.5 px-5 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                  {report.createdAt.toLocaleDateString()}
+                                </td>
+                                <td className="py-2.5 px-5">
+                                  <p className="text-xs font-medium text-gray-900 dark:text-white">{report.userName || 'Unknown'}</p>
+                                  <p className="text-xs text-gray-500 truncate max-w-[150px]">{report.userEmail}</p>
+                                </td>
+                                <td className="py-2.5 px-5">
+                                  <div className="flex flex-wrap gap-1">
+                                    {report.issueTypes.map(issue => (
+                                      <span key={issue} className={`px-1.5 py-0.5 rounded text-xs ${issueColors[issue] || issueColors.Other}`}>
+                                        {issue}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-5 text-xs text-gray-600 dark:text-gray-400 max-w-[250px] truncate">
+                                  {report.description}
+                                </td>
+                                <td className="py-2.5 px-5">
+                                  <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${report.status === 'pending'
+                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                    : report.status === 'resolved'
+                                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                      : report.status === 'reviewed'
+                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                        : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                    }`}>
+                                    {report.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Gyms Table */}
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
           <div className="p-5 border-b border-gray-200 dark:border-gray-800">
@@ -262,93 +523,83 @@ export default function SuperAdminDashboard() {
                     </td>
                   </tr>
                 ) : (
-                  gyms.map((gym) => (
-                    <tr key={gym.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                      <td className="py-3 px-5">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{gym.name}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{gym.address}</p>
-                      </td>
-                      <td className="py-3 px-5">
-                        <p className="text-sm text-gray-900 dark:text-white">{gym.email}</p>
-                        <p className="text-xs text-gray-600 dark:text-gray-400">{gym.phone}</p>
-                      </td>
-                      <td className="py-3 px-5 text-sm font-semibold text-gray-900 dark:text-white">₹{gym.monthlyFee}</td>
-                      <td className="py-3 px-5">
-                        <span
-                          className={`px-2 py-1 rounded text-xs font-medium ${gym.isActive
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                            }`}
-                        >
-                          {gym.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-5 text-sm text-gray-600 dark:text-gray-400">
-                        {gym.createdAt instanceof Date ? gym.createdAt.toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td className="py-3 px-5">
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => handleResetPassword(gym)}
-                            disabled={actionLoading === gym.id}
-                            className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors disabled:opacity-50"
-                            title="Reset Admin Password"
-                          >
-                            <Key className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleToggleActive(gym)}
-                            disabled={actionLoading === gym.id}
-                            className={`p-1.5 rounded transition-colors disabled:opacity-50 ${gym.isActive
-                              ? 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/30'
-                              : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30'
+                  gyms.map((gym) => {
+                    // Check if this gym is flagged
+                    const flagInfo = flaggedGyms.find(f => f.gymId === gym.id);
+                    return (
+                      <tr key={gym.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/30 ${flagInfo ? 'bg-red-50/50 dark:bg-red-900/5' : ''}`}>
+                        <td className="py-3 px-5">
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="text-sm font-medium text-gray-900 dark:text-white">{gym.name}</p>
+                              <p className="text-xs text-gray-600 dark:text-gray-400">{gym.address}</p>
+                            </div>
+                            {flagInfo && (
+                              <span className="px-1.5 py-0.5 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 rounded text-xs font-bold shrink-0" title={`${flagInfo.totalReports} member reports`}>
+                                ⚠ {flagInfo.totalReports}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-5">
+                          <p className="text-sm text-gray-900 dark:text-white">{gym.email}</p>
+                          <p className="text-xs text-gray-600 dark:text-gray-400">{gym.phone}</p>
+                        </td>
+                        <td className="py-3 px-5 text-sm font-semibold text-gray-900 dark:text-white">₹{gym.monthlyFee}</td>
+                        <td className="py-3 px-5">
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${gym.isActive
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                              : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                               }`}
-                            title={gym.isActive ? 'Deactivate Gym' : 'Activate Gym'}
                           >
-                            {gym.isActive ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-                          </button>
-                          <button
-                            onClick={() => handleDeleteGym(gym)}
-                            disabled={actionLoading === gym.id}
-                            className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-50"
-                            title="Delete Gym"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            {gym.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-5 text-sm text-gray-600 dark:text-gray-400">
+                          {gym.createdAt instanceof Date ? gym.createdAt.toLocaleDateString() : 'N/A'}
+                        </td>
+                        <td className="py-3 px-5">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleResetPassword(gym)}
+                              disabled={actionLoading === gym.id}
+                              className="p-1.5 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded transition-colors disabled:opacity-50"
+                              title="Reset Admin Password"
+                            >
+                              <Key className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleToggleActive(gym)}
+                              disabled={actionLoading === gym.id}
+                              className={`p-1.5 rounded transition-colors disabled:opacity-50 ${gym.isActive
+                                ? 'text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/30'
+                                : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30'
+                                }`}
+                              title={gym.isActive ? 'Deactivate Gym' : 'Activate Gym'}
+                            >
+                              {gym.isActive ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGym(gym)}
+                              disabled={actionLoading === gym.id}
+                              className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors disabled:opacity-50"
+                              title="Delete Gym"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Create Gym Modal */}
-        {showCreateGym && (
-          <div className="fixed inset-0 bg-gray-900/50 z-[9999] flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-gray-900 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
-              <div className="sticky top-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 p-4 flex items-center justify-between z-10">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Create New Gym</h2>
-                <button
-                  onClick={() => setShowCreateGym(false)}
-                  className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="p-6">
-                <CreateGymForm
-                  onSuccess={() => {
-                    setShowCreateGym(false);
-                    fetchGyms();
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+
       </main>
     </div>
   );

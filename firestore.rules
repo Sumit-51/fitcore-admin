@@ -1,0 +1,202 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ───── Helper Functions ─────
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserRole() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      // Use ternary operator instead of if statements
+      return userDoc.exists && 'role' in userDoc.data 
+             ? userDoc.data.role 
+             : 'member';
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (getUserRole() == 'gymAdmin' || getUserRole() == 'superAdmin');
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && getUserRole() == 'superAdmin';
+    }
+
+    function isGymAdmin() {
+      return isAuthenticated() && getUserRole() == 'gymAdmin';
+    }
+
+    // ───── Users Collection ─────
+    match /users/{userId} {
+      // Any logged-in user can read any user (needed for gym member lists, etc.)
+      allow read: if isAuthenticated();
+
+      // Users can only update their OWN document, and CANNOT change their role
+      allow update: if isOwner(userId) &&
+                    request.resource.data.role == resource.data.role;
+
+      // Admins can update any user (for enrollment approval, etc.)
+      // SuperAdmin can do anything
+      allow update: if isAdmin();
+
+      // Only allow create during signup (auth uid must match doc id)
+      allow create: if isOwner(userId);
+
+      // Only superAdmin can delete users
+      allow delete: if isSuperAdmin();
+    }
+
+    // ───── Gyms Collection ─────
+    match /gyms/{gymId} {
+      // Anyone logged in can read (browse gyms)
+      allow read: if isAuthenticated();
+
+      // Only the gym's own admin or superAdmin can write
+      allow create: if isAdmin();
+      allow update: if isAuthenticated() &&
+                    (resource.data.adminId == request.auth.uid || isSuperAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    // ───── Enrollments Collection ─────
+    match /enrollments/{enrollmentId} {
+      // Any logged-in user can read (admin needs to see all, member needs own)
+      allow read: if isAuthenticated();
+
+      // Members can CREATE their own enrollment request
+      allow create: if isAuthenticated() &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.status == 'pending';
+
+      // Only admins can update (approve/reject)
+      allow update: if isAdmin();
+
+      // Only superAdmin can delete
+      allow delete: if isSuperAdmin();
+    }
+
+    // ───── Payment History Collection ─────
+    match /paymentHistory/{paymentId} {
+      // Users can read their own payments, admins can read all
+      allow read: if isAuthenticated() &&
+                  (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Users can create their own payment records (must be pending)
+      allow create: if isAuthenticated() &&
+                    request.resource.data.userId == request.auth.uid;
+
+      // Only admins can update (verify payments)
+      allow update: if isAdmin();
+
+      // No deletes - keep audit trail
+      allow delete: if false;
+    }
+
+    // ───── Active Check-ins Collection ─────
+    match /activeCheckIns/{checkInId} {
+      // Anyone logged in can read (crowd tracking)
+      allow read: if isAuthenticated();
+
+      // Users can only create their OWN check-in
+      allow create: if isAuthenticated() &&
+                    request.resource.data.userId == request.auth.uid;
+
+      // Users can only update/delete their OWN check-in (for checkout)
+      allow update, delete: if isAuthenticated() &&
+                             resource.data.userId == request.auth.uid;
+
+      // Admins can also manage check-ins (force checkout, etc.)
+      allow update, delete: if isAdmin();
+    }
+
+    // ───── Check-in History Collection ─────
+    match /checkInHistory/{recordId} {
+      // Anyone logged in can read
+      allow read: if isAuthenticated();
+
+      // Users can only create their OWN history record
+      allow create: if isAuthenticated() &&
+                    request.resource.data.userId == request.auth.uid;
+
+      // No updates or deletes (permanent audit trail)
+      allow update, delete: if false;
+    }
+
+    // ───── Gym Reports Collection ─────
+    match /gymReports/{reportId} {
+      // Anyone logged in can read
+      allow read: if isAuthenticated();
+
+      // Users can create their OWN reports
+      allow create: if isAuthenticated() &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.status == 'pending';
+
+      // Use same rule as previous value to make it work
+      allow update: if isAuthenticated();
+
+      // Only superAdmin can delete
+      allow delete: if isSuperAdmin();
+    }
+
+    // ───── Plan Change Requests Collection ─────
+    match /planChangeRequests/{requestId} {
+      // Anyone logged in can read
+      allow read: if isAuthenticated();
+
+      // Users can create their OWN plan change requests (must be pending)
+      allow create: if isAuthenticated() &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.status == 'pending';
+
+      // Only admins can update (approve/reject)
+      allow update: if isAdmin();
+
+      // ⭐⭐ FIXED: Users can delete their OWN pending requests
+      // SuperAdmin can delete any request
+      allow delete: if isAuthenticated() &&
+                    (
+                      // User can delete their own pending request
+                      (
+                        resource.data.userId == request.auth.uid &&
+                        resource.data.status == 'pending'
+                      ) ||
+                      // SuperAdmin can delete any request
+                      isSuperAdmin()
+                    );
+    }
+
+    // ⭐⭐⭐ ADDED: Gym Reviews Collection ─────
+    match /gymReviews/{reviewId} {
+      // Anyone logged in can read reviews
+      allow read: if isAuthenticated();
+
+      // Users can create reviews with valid rating (1-5)
+      allow create: if isAuthenticated() &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.rating >= 1 &&
+                    request.resource.data.rating <= 5 &&
+                    request.resource.data.rating is int;
+
+      // Users can update their OWN reviews (to edit rating/comment)
+      allow update: if isAuthenticated() &&
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.rating >= 1 &&
+                    request.resource.data.rating <= 5 &&
+                    request.resource.data.rating is int;
+
+      // Users can delete their OWN reviews, admins can delete any
+      allow delete: if isAuthenticated() &&
+                    (
+                      resource.data.userId == request.auth.uid ||
+                      isAdmin()
+                    );
+    }
+  }
+}

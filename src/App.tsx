@@ -5,6 +5,8 @@ import { Members } from './components/Members';
 import { Payments } from './components/Payments';
 import { Attendance } from './components/Attendance';
 import { Reports } from './components/Reports';
+import { GymReports } from './components/GymReports';
+import { GymReviews } from './components/GymReviews';
 import { Settings } from './components/Settings';
 import { useAuth } from './context/AuthContext';
 import LoginPage from './app/page';
@@ -17,12 +19,14 @@ import {
   CreditCard,
   UserCheck,
   BarChart3,
+  Flag,
   Settings as SettingsIcon,
   Menu,
   X,
   Moon,
   Sun,
-  LogOut
+  LogOut,
+  MessageSquare
 } from 'lucide-react';
 
 // Protected Route wrapper component
@@ -57,6 +61,8 @@ function AuthenticatedLayout({ children, darkMode, setDarkMode }: { children: Re
     { id: 'payments', name: 'Payments', icon: CreditCard, path: '/payments' },
     { id: 'attendance', name: 'Attendance', icon: UserCheck, path: '/attendance' },
     { id: 'reports', name: 'Reports', icon: BarChart3, path: '/reports' },
+    { id: 'gym-reports', name: 'Issue Reports', icon: Flag, path: '/gym-reports' },
+    { id: 'reviews', name: 'Reviews', icon: MessageSquare, path: '/reviews' },
     { id: 'settings', name: 'Settings', icon: SettingsIcon, path: '/settings' },
   ] as const;
 
@@ -262,6 +268,26 @@ export default function App() {
             <ProtectedRoute>
               <AuthenticatedLayout darkMode={darkMode} setDarkMode={setDarkMode}>
                 <Reports />
+              </AuthenticatedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/gym-reports"
+          element={
+            <ProtectedRoute>
+              <AuthenticatedLayout darkMode={darkMode} setDarkMode={setDarkMode}>
+                <GymReports />
+              </AuthenticatedLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reviews"
+          element={
+            <ProtectedRoute>
+              <AuthenticatedLayout darkMode={darkMode} setDarkMode={setDarkMode}>
+                <GymReviews />
               </AuthenticatedLayout>
             </ProtectedRoute>
           }
